@@ -24,7 +24,6 @@ public class SecureStorage extends CordovaPlugin {
     private static final boolean SUPPORTED = Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT;
 
     private static final String MSG_NOT_SUPPORTED = "API 19 (Android 4.4 KitKat) is required. This device is running API " + Build.VERSION.SDK_INT;
-    private static final String MSG_DEVICE_NOT_SECURE = "Device is not secure";
 
     private SharedPreferencesHandler PREFS;
     private String ALIAS;
@@ -34,11 +33,7 @@ public class SecureStorage extends CordovaPlugin {
     @Override
     public void onResume(boolean multitasking) {
         if (secureDeviceContext != null) {
-            if (isDeviceSecure()) {
-                secureDeviceContext.success();
-            } else {
-                secureDeviceContext.error(MSG_DEVICE_NOT_SECURE);
-            }
+            secureDeviceContext.success();
             secureDeviceContext = null;
         }
 
@@ -48,7 +43,7 @@ public class SecureStorage extends CordovaPlugin {
                     initContextRunning = true;
                     try {
                         if (!RSA.isEntryAvailable(ALIAS)) {
-                            RSA.createKeyPair(getContext(), ALIAS);
+                            RSA.createKeyPair(getContext(), ALIAS, isDeviceSecure());
                         }
                         initSuccess(initContext);
                     } catch (Exception e) {
@@ -85,12 +80,23 @@ public class SecureStorage extends CordovaPlugin {
             ALIAS = getContext().getPackageName() + "." + args.getString(0);
             PREFS = new SharedPreferencesHandler(ALIAS + "_SS", getContext());
 
-            if (!isDeviceSecure()) {
-                Log.e(TAG, MSG_DEVICE_NOT_SECURE);
-                callbackContext.error(MSG_DEVICE_NOT_SECURE);
-            } else if (!RSA.isEntryAvailable(ALIAS)) {
+            if (!RSA.isEntryAvailable(ALIAS)) {
                 initContext = callbackContext;
-                unlockCredentials();
+                if (isDeviceSecure()) {
+                    unlockCredentials();
+                }
+                else {
+                    try {
+                        RSA.createKeyPair(getContext(), ALIAS, isDeviceSecure());
+                        initSuccess(initContext);
+                    } catch (Exception e) {
+                        Log.e(TAG, "Init failed :", e);
+                        initContext.error(e.getMessage());
+                    } finally {
+                        initContext = null;
+                        initContextRunning = false;
+                    }
+                }
             } else {
                 initSuccess(callbackContext);
             }
